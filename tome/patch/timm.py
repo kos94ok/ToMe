@@ -12,7 +12,8 @@
 from typing import Tuple
 
 import torch
-from timm.models.vision_transformer import Attention, Block, VisionTransformer
+import torch.nn as nn
+from timm.models.vision_transformer import Attention, Block, VisionTransformer, DropPath
 
 from tome.merge import bipartite_soft_matching, merge_source, merge_wavg
 from tome.utils import parse_r
@@ -25,11 +26,13 @@ class ToMeBlock(Block):
      - Compute and propogate token size and potentially the token sources.
     """
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, drop_path=0.) -> torch.Tensor:
+
+        self.drop_path_rate = DropPath(drop_path) if drop_path > 0. else nn.Identity()  
         # Note: this is copied from timm.models.vision_transformer.Block with modifications.
         attn_size = self._tome_info["size"] if self._tome_info["prop_attn"] else None
         x_attn, metric = self.attn(self.norm1(x), attn_size)
-        x = x + self.drop_path(x_attn)
+        x = x + self.drop_path_rate(x_attn)
 
         r = self._tome_info["r"].pop(0)
         if r > 0:
@@ -46,7 +49,7 @@ class ToMeBlock(Block):
                 )
             x, self._tome_info["size"] = merge_wavg(merge, x, self._tome_info["size"])
 
-        x = x + self.drop_path(self.mlp(self.norm2(x)))
+        x = x + self.drop_path_rate(self.mlp(self.norm2(x)))
         return x
 
 
